@@ -1,10 +1,10 @@
 import { ARENA, wrap } from "./arena.js";
 
 export const TUNING = {
-	turnSpeed: 3.5, // рад/с
-	thrust: 450, // прискорення, px/с²
-	drag: 0.6, // опір (експоненційне згасання)
-	maxSpeed: 600, // px/с
+	turnSpeed: 4.2, // рад/с
+	thrust: 550, // прискорення, px/с²
+	drag: 0.8, // опір (експоненційне згасання)
+	maxSpeed: 450, // px/с
 };
 
 export function createShip() {
