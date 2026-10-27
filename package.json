@@ -7,8 +7,9 @@
 		"dev": "vite",
 		"build": "vite build",
 		"preview": "vite preview",
-		"lint": "biome check src",
-		"fix": "biome check --write src"
+		"test": "node --test",
+		"lint": "biome check src test",
+		"fix": "biome check --write src test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.15",

@@ -16,12 +16,10 @@ function lerpAngle(a, b, t) {
 	return a + d * t;
 }
 
-export function interpolateShip(prev, curr, alpha) {
+function lerpPos(e, alpha) {
 	return {
-		x: lerpWrap(prev.x, curr.x, alpha, ARENA.width),
-		y: lerpWrap(prev.y, curr.y, alpha, ARENA.height),
-		angle: lerpAngle(prev.angle, curr.angle, alpha),
-		thrust: curr.thrust,
+		x: lerpWrap(e.prevPos.x, e.pos.x, alpha, ARENA.width),
+		y: lerpWrap(e.prevPos.y, e.pos.y, alpha, ARENA.height),
 	};
 }
 
@@ -47,12 +45,32 @@ export function drawBackground(ctx) {
 	ctx.strokeRect(0, 0, ARENA.width, ARENA.height);
 }
 
-export function drawShip(ctx, ship) {
-	ctx.save();
-	ctx.translate(ship.x, ship.y); // початок координат — у корабель
-	ctx.rotate(ship.angle); // повертаємо полотно
+function drawShip(ctx, ship, alpha) {
+	if (ship.destroyed) return;
+	// блимання під час невразливості після респауну
+	if (ship.invulnerable > 0 && Math.floor(performance.now() / 100) % 2 === 0)
+		return;
 
-	ctx.strokeStyle = "#e8f1ff";
+	const p = lerpPos(ship, alpha);
+	ctx.save();
+	ctx.translate(p.x, p.y);
+
+	// смужка hp над кораблем (не обертається разом з ним)
+	ctx.fillStyle = "#2a3550";
+	ctx.fillRect(-16, -28, 32, 4);
+	ctx.fillStyle = ship.hp > 30 ? "#9fe870" : "#ff6b6b";
+	ctx.fillRect(-16, -28, (32 * ship.hp) / 100, 4);
+
+	if (ship.effects.has("shield")) {
+		ctx.strokeStyle = "#5ec8ff";
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		ctx.arc(0, 0, ship.radius + 8, 0, Math.PI * 2);
+		ctx.stroke();
+	}
+
+	ctx.rotate(lerpAngle(ship.prevAngle, ship.angle, alpha));
+	ctx.strokeStyle = ship.color;
 	ctx.lineWidth = 2;
 	ctx.beginPath();
 	ctx.moveTo(20, 0);
@@ -73,10 +91,112 @@ export function drawShip(ctx, ship) {
 	ctx.restore();
 }
 
-export function drawHud(ctx, stats) {
+function drawBullet(ctx, bullet, alpha) {
+	const p = lerpPos(bullet, alpha);
+	ctx.fillStyle = bullet.homing ? "#c792ea" : "#ffe08a";
+	ctx.beginPath();
+	ctx.arc(p.x, p.y, bullet.radius, 0, Math.PI * 2);
+	ctx.fill();
+}
+
+function drawAsteroid(ctx, asteroid, alpha) {
+	const p = lerpPos(asteroid, alpha);
+	ctx.save();
+	ctx.translate(p.x, p.y);
+	ctx.rotate(lerpAngle(asteroid.prevAngle, asteroid.angle, alpha));
+	ctx.strokeStyle = asteroid.homing ? "#ff6b6b" : "#9aa7bd";
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	const n = asteroid.shape.length;
+	for (let i = 0; i < n; i++) {
+		const a = (i / n) * Math.PI * 2;
+		const r = asteroid.radius * asteroid.shape[i];
+		if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+		else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+	}
+	ctx.closePath();
+	ctx.stroke();
+	ctx.restore();
+}
+
+function drawPickup(ctx, item) {
+	const fading = item.ttl - item.age < 3;
+	if (fading && Math.floor(item.age * 6) % 2 === 0) return; // блимає перед зникненням
+	const pulse = 1 + Math.sin(item.age * 4) * 0.1;
+	ctx.save();
+	ctx.translate(item.pos.x, item.pos.y);
+	ctx.strokeStyle = item.pickup.color;
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.arc(0, 0, item.radius * pulse, 0, Math.PI * 2);
+	ctx.stroke();
+	ctx.fillStyle = item.pickup.color;
+	ctx.font = "bold 14px monospace";
+	ctx.textAlign = "center";
+	ctx.textBaseline = "middle";
+	ctx.fillText(item.pickup.label, 0, 1);
+	ctx.restore();
+}
+
+function drawExplosion(ctx, boom) {
+	ctx.globalAlpha = Math.max(0, 1 - boom.age / boom.life);
+	ctx.fillStyle = boom.color;
+	for (const p of boom.particles) ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+	ctx.globalAlpha = 1;
+}
+
+// таблиця «kind → як малювати» замість ланцюжка if/else
+const DRAWERS = {
+	ship: drawShip,
+	bullet: drawBullet,
+	asteroid: drawAsteroid,
+	pickup: drawPickup,
+	explosion: drawExplosion,
+};
+
+export function drawEntity(ctx, entity, alpha) {
+	DRAWERS[entity.kind]?.(ctx, entity, alpha);
+}
+
+export function drawHud(ctx, stats, { player, world }, view) {
 	ctx.fillStyle = "#9fe870";
 	ctx.font = "14px monospace";
+	ctx.textAlign = "left";
+	ctx.textBaseline = "alphabetic";
 	ctx.fillText(`steps/s: ${stats.stepsPerSec.toFixed(1)}`, 12, 22);
 	ctx.fillText(`frames/s: ${stats.framesPerSec.toFixed(1)}`, 12, 40);
 	ctx.fillText(`frame: ${stats.frameMs.toFixed(1)} ms`, 12, 58);
+
+	ctx.fillStyle = "#e8f1ff";
+	ctx.fillText(`score: ${world.scores.get(player.id) ?? 0}`, 12, 84);
+	ctx.fillText(`hp: ${player.hp}   deaths: ${player.deaths}`, 12, 102);
+	ctx.fillText(`entities: ${world.size}`, 12, 120);
+
+	const effects = [...player.effects]
+		.map(([type, left]) => `${type} ${left.toFixed(1)}s`)
+		.join("  ");
+	if (effects) {
+		ctx.fillStyle = "#c792ea";
+		ctx.fillText(effects, 12, 138);
+	}
+
+	if (player.destroyed) {
+		ctx.fillStyle = "#ff6b6b";
+		ctx.font = "bold 24px monospace";
+		ctx.textAlign = "center";
+		ctx.fillText(
+			`Респаун через ${Math.max(0, player.respawnIn).toFixed(1)} с`,
+			view.width / 2,
+			view.height / 2,
+		);
+	}
+
+	ctx.fillStyle = "#6b7a99";
+	ctx.font = "12px monospace";
+	ctx.textAlign = "left";
+	ctx.fillText(
+		"←/→ A/D поворот · ↑/W тяга · Space стрільба · клік — один постріл · pickup: S щит, R швидкострільність, H самонавідні кулі",
+		12,
+		view.height - 12,
+	);
 }
