@@ -24,6 +24,13 @@ export class World {
 		this.resolve = resolve;
 		this.time = 0;
 		this.scores = new Map(); // id корабля → очки
+		// Шина подій. Симуляція лише повідомляє «що сталося»; хто слухає
+		// (звук, HUD, у Lab 5 — мережа), вона не знає й нічого з них не імпортує.
+		this.events = new EventTarget();
+	}
+
+	emit(type, detail) {
+		this.events.dispatchEvent(new CustomEvent(type, { detail }));
 	}
 
 	get size() {
@@ -57,9 +64,11 @@ export class World {
 		if (e) e.alive = false;
 	}
 
-	addScore(id, points) {
+	addScore(id, points, pos = null) {
 		if (!this.scores.has(id)) return; // очки лише кораблям
-		this.scores.set(id, this.scores.get(id) + points);
+		const total = this.scores.get(id) + points;
+		this.scores.set(id, total);
+		this.emit("scored", { id, points, total, x: pos?.x, y: pos?.y });
 	}
 
 	step(dt, inputs = new Map()) {

@@ -21,10 +21,17 @@ export const TUNING = {
 export class Ship extends Entity {
 	#hp = TUNING.maxHp; // приватне: змінити можна лише через takeDamage
 
-	constructor({ pos, angle = -Math.PI / 2, color = "#e8f1ff", name = "ship" }) {
+	constructor({
+		pos,
+		angle = -Math.PI / 2,
+		color = "#e8f1ff",
+		name = "ship",
+		skin = "player", // який кадр зі спрайтшита ships.png: "player" або "drone"
+	}) {
 		super({ kind: "ship", pos, angle, radius: 14 });
 		this.color = color;
 		this.name = name;
+		this.skin = skin;
 		this.thrust = false;
 		this.fireCooldown = 0;
 		this.invulnerable = TUNING.spawnShield;
@@ -102,7 +109,14 @@ export class Ship extends Entity {
 			ownerId: this.id,
 			homing,
 		});
-		return this.world.spawn(bullet);
+		this.world.spawn(bullet);
+		this.world.emit("fired", {
+			ownerId: this.id,
+			homing: homing !== null,
+			x: bullet.pos.x,
+			y: bullet.pos.y,
+		});
+		return bullet;
 	}
 
 	takeDamage(amount, world, sourceId) {
@@ -110,6 +124,15 @@ export class Ship extends Entity {
 		if (this.effects.has("shield")) return false;
 
 		this.#hp = Math.max(0, this.#hp - amount);
+		world.emit("hit", {
+			targetId: this.id,
+			targetKind: "ship",
+			sourceId,
+			damage: amount,
+			hp: this.#hp,
+			x: this.pos.x,
+			y: this.pos.y,
+		});
 		if (this.#hp === 0) this.#explode(world, sourceId);
 		return true;
 	}
@@ -130,7 +153,14 @@ export class Ship extends Entity {
 				life: 1.2,
 			}),
 		);
-		if (sourceId !== this.id) world.addScore(sourceId, 100);
+		world.emit("exploded", {
+			id: this.id,
+			kind: "ship",
+			sourceId,
+			x: this.pos.x,
+			y: this.pos.y,
+		});
+		if (sourceId !== this.id) world.addScore(sourceId, 100, this.pos);
 	}
 
 	respawn() {

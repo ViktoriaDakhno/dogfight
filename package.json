@@ -8,8 +8,8 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"test": "node --test",
-		"lint": "biome check src test",
-		"fix": "biome check --write src test"
+		"lint": "biome check .",
+		"fix": "biome check --write ."
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.15",

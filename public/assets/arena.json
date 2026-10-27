@@ -1,0 +1,8 @@
+{
+	"width": 1600,
+	"height": 900,
+	"background": "#101626",
+	"grid": "#1e2a45",
+	"border": "#4a6fa5",
+	"gridStep": 100
+}

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Головоломки порядку</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; background: #0b0f1a; color: #e8f1ff; margin: 24px; }
+    pre { background: #121a2e; padding: 12px; border-radius: 8px; overflow: auto; }
+    .out { color: #9fe870; }
+    button { font: inherit; padding: 6px 12px; margin: 4px 0 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+<h1>Головоломки порядку: мікрозадача / задача / rAF</h1>
+<p>Відкрийте <code>http://localhost:5173/puzzles.html</code>. Спершу спрогнозуйте вивід, потім натисніть «Запустити». Вивід з'являється і тут, і в консолі (F12).</p>
+<div id="list"></div>
+<script type="module">
+	const PUZZLES = [
+		{
+			title: "1. await віддає чергу навіть для не-промісу",
+			code: () => {
+				log("A");
+				async function load() {
+					log("B");
+					await null;
+					log("C");
+					return "D";
+				}
+				load().then((v) => log(v));
+				Promise.resolve().then(() => log("E"));
+				log("F");
+			},
+		},
+		{
+			title: "2. setTimeout всередині .then",
+			code: () => {
+				setTimeout(() => log("T1"), 0);
+				Promise.resolve().then(() => {
+					log("P1");
+					setTimeout(() => log("T2"), 0);
+					Promise.resolve().then(() => log("P2"));
+				});
+				log("S");
+			},
+		},
+		{
+			title: "3. requestAnimationFrame, мікрозадачі й таймер",
+			code: () => {
+				requestAnimationFrame(() => {
+					log("raf A");
+					Promise.resolve().then(() => log("micro after A"));
+					setTimeout(() => log("timeout from A"), 0);
+				});
+				requestAnimationFrame(() => log("raf B"));
+				Promise.resolve().then(() => log("micro"));
+				log("sync");
+			},
+		},
+		{
+			title: "4. Колбек із кешу vs проміс (чому loadImage — проміс)",
+			code: () => {
+				const cache = new Map([["ship.png", "img"]]);
+				const loadCb = (url, cb) =>
+					cache.has(url) ? cb(cache.get(url)) : setTimeout(() => cb("net"), 0);
+				const loadP = (url) =>
+					cache.has(url)
+						? Promise.resolve(cache.get(url))
+						: new Promise((r) => setTimeout(() => r("net"), 0));
+				let ready = false;
+				loadCb("ship.png", () => log(`callback: ready=${ready}`));
+				loadP("ship.png").then(() => log(`promise: ready=${ready}`));
+				ready = true;
+			},
+		},
+		{
+			title: "5. Promise.all падає першим, але сусіди добігають",
+			code: () => {
+				const wait = (ms, v) =>
+					new Promise((r) =>
+						setTimeout(() => {
+							log(`done ${v}`);
+							r(v);
+						}, ms),
+					);
+				Promise.all([wait(20, "ships"), Promise.reject(new Error("arena")), wait(10, "sounds")])
+					.then(() => log("all ok"))
+					.catch((e) => log(`caught ${e.message}`))
+					.finally(() => log("finally"));
+				log("started");
+			},
+		},
+	];
+
+	let out = null;
+	function log(v) {
+		console.log(v);
+		out.textContent += `${out.textContent ? ", " : ""}${v}`;
+	}
+
+	const list = document.querySelector("#list");
+	for (const p of PUZZLES) {
+		const h = document.createElement("h3");
+		h.textContent = p.title;
+		const pre = document.createElement("pre");
+		pre.textContent = p.code.toString().split("\n").slice(1, -1).map((l) => l.replace(/^\t{4}/, "")).join("\n");
+		const btn = document.createElement("button");
+		btn.textContent = "Запустити";
+		const res = document.createElement("pre");
+		res.className = "out";
+		btn.addEventListener("click", () => {
+			res.textContent = "";
+			out = res;
+			console.log(`--- ${p.title}`);
+			p.code();
+		});
+		list.append(h, pre, btn, res);
+	}
+</script>
+</body>
+</html>

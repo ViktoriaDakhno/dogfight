@@ -1,50 +1,279 @@
-# Dogfight
+﻿# Dogfight
 
-Браузерна гра: космічний корабель на арені з «загортанням» країв, астероїди, кулі, pickup-и.
-Курс JavaScript, лаби 1–2 (мультиплеєр з'явиться в Lab 5).
+Браузерна гра: космічний корабель на арені з «загортанням» країв, астероїди, кулі, pickup-и, звук, лобі.
+Курс JavaScript, лаби 1–3 (мультиплеєр з'явиться в Lab 5).
 
-**Керування:** ←/→ або A/D поворот, ↑ або W тяга, **Space** стрільба (утримувати), **клік мишею** один постріл.
+**Шлях гравця:** екран завантаження → лобі (ім'я + кімната) → гра.
+**Керування:** ←/→ або A/D поворот, ↑ або W тяга, **Space** стрільба (утримувати), **клік мишею** один постріл, **M** звук, **Esc** на екрані завантаження скасовує його.
 **Pickup-и:** **S** щит (6 с без шкоди), **R** швидкострільність (8 с), **H** самонавідні кулі (8 с).
-Червоний корабель — навчальний дрон-мішень. Червоні астероїди — «мисливці», що летять на кораблі.
+Червоний корабель — навчальний дрон-мішень. Астероїди в червоному пунктирному кільці — «мисливці», що летять на кораблі.
 
 ## Як запустити
 
 ```bash
 npm install
 npm run dev     # гра: http://localhost:5173
-npm test        # тести симуляції (Node, без браузера)
+npm test        # 33 тести: симуляція, завантаження, retry, лобі (Node, без браузера)
 npm run lint    # Biome
 ```
 
-Версія Node вказана в `.nvmrc`.
+Версія Node вказана в `.nvmrc`. `/api/rooms` і навмисні збої віддає dev-сервер Vite (`dev/dev-api.js`), тож потрібен саме `npm run dev` (або `npm run preview`), а не відкриття `index.html` з диска.
 
 ## Структура
 
 ```
+index.html               canvas + #ui (панелі лобі й помилок), стилі
+puzzles.html             п'ять головоломок порядку (Lab 3): /puzzles.html
+vite.config.js           підключає dev-api як middleware
+dev/dev-api.js           /api/rooms, ?delay, ?status, ?flaky, ?corrupt, ?html, справжній 404 (Lab 4 замінить)
+public/assets/
+  manifest.json          список ассетів: тип, url, кадри спрайтшита, critical
+  arena.json             параметри арени (кольори, крок сітки, розмір за замовчуванням)
+  sprites/*.png          спрайтшити: ships (4 кадри), asteroids (3), bullets (2)
+  sounds/*.wav           shoot, hit, explosion, pickup
+tools/gen_assets.py      як згенеровано спрайти й звуки (Pillow + numpy)
 src/
-  main.js              збирає все разом, запускає цикл; фікс this для кліку
-  loop.js              фіксований крок 1/60 с (Lab 1)
-  input.js             клавіатура як замикання (Lab 1)
-  render/canvas.js     canvas з урахуванням devicePixelRatio
-  render/draw.js       малювання за kind + інтерполяція + HUD
-  sim/                 симуляція без DOM (працює і в Node)
-    vector.js          Vector2 — незмінний, усі методи повертають новий вектор
-    entity.js          базовий Entity: static #nextId, get id, pos, vel, radius, kind, update
-    ship.js            Ship extends Entity: #hp, get hp, fire(), takeDamage, респаун
-    bullet.js          Bullet extends Entity: TTL, власник, компонент homing
-    asteroid.js        Asteroid extends Entity: hp, розколювання, компонент homing
-    pickup.js          Pickup extends Entity: стоїть, компонент pickup
-    explosion.js       Explosion extends Entity: частинки
-    components.js      компоненти-дані: homing, pickup, effects
-    world.js           World: Map<id, Entity>, spawn/despawn, ітератор, *ofKind, step
-    collision.js       коло-коло O(n²), генерує пари [a, b]
-    rules.js           що робити з парою: шкода, pickup, відскок
-    systems.js         homing-система
-    spawner.js         поява астероїдів і pickup-ів
-    random.js          детермінований генератор (seed)
-    game.js            стартовий світ
-test/sim.test.js       13 тестів симуляції
+  main.js                loading → лобі → гра; Retry; фікс this
+  async.js               sleep(ms, signal), once(target, type) — подія → проміс
+  assets/http.js         HttpError, fetchJson (перевіряє ok), withRetry (backoff + jitter), explainError
+  assets/loader.js       loadJson / loadImage / loadAudio з AbortSignal, loadAll з прогресом
+  assets/faults.js       ?fault=… для галереї збоїв, ?bench — sequential vs concurrent
+  audio.js               Web Audio: AudioContext після кліку, слухає події симуляції
+  lobby/lobby.js         class Lobby extends EventTarget: refresh, таймаут, abort, join
+  lobby/lobby-view.js    DOM лобі (лише малює й передає кліки)
+  ui/panel.js            панель з кнопками → проміс з вибором (Retry / Продовжити)
+  loop.js                фіксований крок 1/60 с (Lab 1)
+  input.js               клавіатура як замикання (Lab 1)
+  render/canvas.js       canvas з урахуванням devicePixelRatio
+  render/draw.js         малювання за kind: спрайти, а якщо не завантажились — вектор
+  render/sprites.js      вирізання кадрів зі спрайтшита (drawImage з source rect)
+  render/hud.js          HUD — підписник подій: «+очки», стрічка подій, спалах шкоди
+  render/loading.js      екран завантаження: прогрес-бар, статус кожного файлу
+  sim/                   симуляція без DOM (Lab 2) + шина подій World.events
+test/sim.test.js         13 тестів симуляції (Lab 2)
+test/async.test.js       20 тестів: fetch/retry/таймаут/abort/битий JSON, loadAll, лобі, події, dev-api
 ```
+
+## Лаба 3: асинхронний JavaScript
+
+### Що зроблено
+
+| Етап | Що | Де |
+|---|---|---|
+| M1 | `manifest.json` → `loadAll` через `Promise.all` з прогресом по кожному файлу; справжній прогрес-бар; гра стартує лише після `await loadAll(...)` | `assets/loader.js`, `render/loading.js`, `main.js` |
+| M1 | `loadImage` / `loadAudio` / `loadJson` приймають `AbortSignal`; спільний `fetchChecked`/`fetchJson` перевіряє `res.ok`; `withRetry` з exponential backoff + jitter, без повторів на 4xx | `assets/http.js`, `assets/loader.js` |
+| M2 | Кораблі, кулі, астероїди малюються зі спрайтшитів (`drawImage` з source rect); якщо спрайт не завантажився — векторна заміна з Lab 2 | `render/sprites.js`, `render/draw.js` |
+| M2 | Web Audio: звуки декодуються на екрані завантаження, `AudioContext` створюється в обробнику кліку «Приєднатися» | `audio.js` |
+| M2 | Шина `EventTarget` + `CustomEvent`: симуляція шле `fired`, `hit`, `exploded`, `scored`, `picked`; звук і HUD підписуються. Симуляція не імпортує ні звук, ні HUD (це перевіряє тест) | `sim/world.js`, `audio.js`, `render/hud.js` |
+| M3 | Лобі: `class Lobby extends EventTarget`, `GET /api/rooms` кожні 3 с, `AbortSignal.timeout(2500)` на кожен запит, `abort()` при виході; DOM — окремий модуль | `lobby/lobby.js`, `lobby/lobby-view.js` |
+| M4 | 5 власних головоломок порядку, галерея збоїв | нижче |
+
+![Лобі](doc/lab3_lobby.jfif)
+![Гра зі спрайтами](doc/lab3_game.png)
+
+### Демонстраційні режими (параметри адреси)
+
+| Адреса | Що видно |
+|---|---|
+| `/` | звичайний шлях: завантаження → лобі → гра зі звуком |
+| `/?fault=404,slow` | `asteroids` → 404 одразу, `ships` їде 3 с: видно прогрес-бар посеред завантаження |
+| `/?fault=404` | панель «Деякі файли не завантажились» → «Продовжити без них» → астероїди векторні |
+| `/?fault=html` | сервер відповів **200**, але замість PNG прислав HTML-сторінку → «файл не є картинкою» → векторна заміна |
+| `/?fault=timeout` | `arena.json` не відповідає: 3 спроби по 2 с з backoff → кнопка «Спробувати ще раз» → успіх |
+| `/?fault=badjson` | битий `arena.json`: без повторів → кнопка Retry |
+| `/?fault=abort` | усі файли повільні, через 0.8 с `abort()` → «Завантаження скасовано» → Retry |
+| `/?fault=slow` + **Esc** | ручне скасування посеред завантаження |
+| `/?fault=flaky,slow` | `arena.json` двічі віддає 503 → `✓ arena … (після 2 повт.)`; у консолі — затримки backoff |
+| `/?bench` | вимір sequential vs concurrent прямо в грі |
+| `/?lobby=slow` | лобі: сервер довше за таймаут → «Сервер не відповів вчасно», наступна спроба за 3 с |
+| `/?lobby=down` / `/?lobby=badjson` | лобі: 503 / битий JSON — лобі живе, пробує знову |
+| `/?lobby=lag` | кімнати їдуть 1.5 с; натиснути «Приєднатися», поки статус «Оновлюю…» → у консолі `[lobby] запит скасовано: гравець пішов з лобі` |
+| `/?bug` | баг `this` з Lab 2 |
+| `/puzzles.html` | п'ять головоломок порядку з кнопкою «Запустити» |
+
+Збій діє лише на першу спробу завантаження: після «Спробувати ще раз» усе проходить нормально, так видно відновлення після помилки.
+
+### Sequential vs concurrent
+
+Той самий пак з 8 файлів (`arena.json`, 3 спрайтшити, 4 звуки), без кешу (`cache: "no-store"`), `?bench`:
+
+| Спосіб | Без затримки | Затримка 200 мс на файл |
+|---|---|---|
+| `for (...) await load(item)` — sequential | 69 мс | **1731 мс** |
+| `await Promise.all(items.map(load))` — concurrent | 21 мс | **439 мс** |
+
+- **Sequential: 1731 мс ≈ 8 × 200 мс.** Кожен наступний запит стартує лише після попереднього: `const a = await loadA(); const b = await loadB()` — це черга, хоча файли одне від одного не залежать.
+- **Concurrent: 439 мс ≈ 2 × 200 мс, а не 1 × 200 мс.** Усі 8 запитів стартують одразу, але браузер тримає не більше **6 з'єднань на один хост** для HTTP/1.1 (dev-сервер Vite). Тому 6 файлів їдуть першою «хвилею», 2 — другою. Виграш майже в 4 рази.
+- Без штучної затримки локальний сервер відповідає за мілісекунди, і різниця мала. На справжній мережі кожен запит коштує десятки–сотні мілісекунд — саме тоді послідовні `await` і роблять завантаження довгим.
+
+![Вимір у грі](doc/lab3_bench.png)
+
+### Retry, таймаути, скасування
+
+| Ситуація | Що робить `withRetry` | Чому |
+|---|---|---|
+| обрив мережі (`TypeError`), таймаут (`TimeoutError`), 5xx | повторює: 3 спроби, затримка `2^n · 250 мс`, з неї випадково ½…1 (jitter) | збій тимчасовий; jitter — щоб багато клієнтів не повернулися в одну мить |
+| 4xx (наприклад, 404) | **не повторює** | файлу немає — і через секунду не з'явиться |
+| битий JSON (`SyntaxError`), не картинка | не повторює | повтор поверне той самий зіпсований файл |
+| 200 OK, але прийшов HTML замість PNG | не повторює | сервер «успішно» віддав не той файл — повтор отримає те саме |
+| `abort()` (Esc, вихід з лобі) | не повторює, пауза між спробами теж переривається | гравець сам скасував |
+
+- **Таймаут кожного запиту** — `AbortSignal.any([signal, AbortSignal.timeout(ms)])`: запит падає або від скасування ззовні, або від вичерпаного часу.
+- **`fetch` не відхиляє проміс на 404.** Він виконується, щойно прийшли заголовки (`res.ok === false`). Тому `fetchChecked` сам кидає `HttpError` з номером статусу, а тіло читається окремим `await res.json()` — другим кроком, де теж може бути збій (битий JSON).
+- **`Promise.all` нічого не скасовує.** Коли падає критичний `arena.json`, `loadAll` сам викликає `abort()` для решти файлів (`internal` контролер), і вони позначаються як «Скасовано».
+- **Пастка Vite: SPA fallback.** На першому запуску `?fault=404` показав не «HTTP 404», а «файл не є картинкою (text/html)». Dev-сервер Vite на будь-яку невідому адресу віддає `index.html` зі статусом **200**, тож перевірка `res.ok` пройшла, і помилку зловило лише декодування картинки. Тому `dev/dev-api.js` тепер віддає справжній 404 для відсутніх файлів у `/assets/`, а випадок «200, але HTML» лишився окремим режимом `?fault=html`. Висновок: `res.ok` — необхідна, але не достатня перевірка, вміст теж треба валідувати.
+- **Критичні й некритичні файли.** `arena.json` має `"critical": true` — без нього гри немає, пак відхиляється → Retry. Спрайти й звуки некритичні: збій потрапляє у `failures`, гра стартує з векторною графікою або без звуку.
+
+### Шина подій: симуляція не знає про звук і HUD
+
+```js
+// sim/world.js — симуляція лише повідомляє
+this.events = new EventTarget();
+emit(type, detail) { this.events.dispatchEvent(new CustomEvent(type, { detail })); }
+
+// audio.js — підписник
+events.addEventListener("fired", (e) => { if (e.detail.ownerId === playerId) play("shoot"); });
+```
+
+| Подія | Хто шле | Хто слухає |
+|---|---|---|
+| `fired` | `Ship.fire()` | звук пострілу |
+| `hit` | `Ship.takeDamage`, `Asteroid.takeDamage` | звук влучання; HUD — червоний спалах, якщо влучили в гравця |
+| `exploded` | вибух корабля / астероїда | звук вибуху; HUD — стрічка «Дрона збито» / «Вас збито» |
+| `scored` | `World.addScore` | HUD — «+50» над місцем влучання |
+| `picked` | підбір pickup-у | звук pickup; HUD — «Підібрано: Щит» |
+
+Тест «Симуляція не імпортує звук, HUD чи DOM» читає всі файли `src/sim/` і перевіряє, що вони імпортують лише сусідів з `src/sim/` і не звертаються до `document`/`window`. У Lab 5 на ці ж події підпишеться мережа.
+
+**Звук.** `loadAudio` робить `fetch → arrayBuffer → decodeAudioData` ще на екрані завантаження (декодує `OfflineAudioContext`, який не грає звук і тому не потребує кліку). Справжній `AudioContext` створюється в обробнику кліку «Приєднатися» — це жест гравця, тож браузер дозволяє звук. Кожен постріл — новий дешевий `AudioBufferSourceNode` над тим самим декодованим буфером, тому звуки накладаються без затримки.
+
+### Лобі
+
+- `Lobby extends EventTarget` не знає про DOM: шле `loading`, `rooms`, `error`, `aborted`, `join`. `lobby-view.js` лише слухає ці події й малює, а кліки передає в `lobby.refresh()` / `lobby.join()`.
+- `refresh()` повторюється кожні 3 с ланцюжком `setTimeout` (наступний запит — лише після завершення попереднього, без накладання), поки лобі відкрите і вкладка видима (`visibilitychange`).
+- Кожен запит має `AbortSignal.timeout(2500)`. Збій лобі (таймаут, 503, битий JSON) не валить його: показується повідомлення, наступна спроба — за інтервалом.
+- `join()` викликає `stop()` → `abort()`: запит, що летить, скасовується, і відповідь, яка прийде пізніше, вже не перемалює неіснуючий екран (у тесті сервер відповідає через 300 мс після виходу, а подія `rooms` так і не приходить).
+- `/api/rooms` віддає `dev/dev-api.js` (Vite middleware): 5 кімнат з різними аренами, кількість гравців змінюється кожні 4 с, «Турнір» заповнений і недоступний. «Приєднатися» запускає локальну гру з `room.arena`: розмір арени, кількість астероїдів, частка «мисливців», seed.
+
+### П'ять головоломок порядку
+
+Кожну головоломку я запускала кілька разів на сторінці `http://localhost:5173/puzzles.html` (Edge), вивід щоразу однаковий.
+
+**1. `await` віддає чергу навіть для не-промісу**
+
+```js
+log("A");
+async function load() { log("B"); await null; log("C"); return "D"; }
+load().then((v) => log(v));
+Promise.resolve().then(() => log("E"));
+log("F");
+```
+
+Вивід: `A, B, F, C, E, D`. Синхронно — A, B (до `await`), F. Продовження після `await` стало в чергу мікрозадач **раніше** за E, тож C, потім E; `return "D"` виконує проміс функції, і його `.then` стає в чергу лише тепер — D останнім.
+
+**2. `setTimeout` всередині `.then`**
+
+```js
+setTimeout(() => log("T1"), 0);
+Promise.resolve().then(() => {
+  log("P1");
+  setTimeout(() => log("T2"), 0);
+  Promise.resolve().then(() => log("P2"));
+});
+log("S");
+```
+
+Вивід: `S, P1, P2, T1, T2`. Мікрозадачі виконуються всі, включно з новими (P2), до першого таймера; T2 поставлено в чергу задач після T1, тож і виконується після нього.
+
+**3. `requestAnimationFrame`, мікрозадачі й таймер**
+
+```js
+requestAnimationFrame(() => {
+  log("raf A");
+  Promise.resolve().then(() => log("micro after A"));
+  setTimeout(() => log("timeout from A"), 0);
+});
+requestAnimationFrame(() => log("raf B"));
+Promise.resolve().then(() => log("micro"));
+log("sync");
+```
+
+Вивід: `sync, micro, raf A, micro after A, raf B, timeout from A`. rAF — не задача й не мікрозадача, а крок рендерингу; черга мікрозадач спустошується **після кожного** rAF-колбека (тому «micro after A» перед «raf B»), а таймер з rAF чекає, поки завершаться всі rAF-колбеки цього кадру.
+
+**4. Колбек із кешу vs проміс — чому `loadImage` повертає проміс**
+
+```js
+let ready = false;
+loadCb("ship.png", () => log(`callback: ready=${ready}`)); // з кешу — викликає одразу
+loadP("ship.png").then(() => log(`promise: ready=${ready}`));
+ready = true;
+```
+
+Вивід: `callback: ready=false, promise: ready=true`. Колбек з кешу спрацював синхронно, ще до `ready = true`, а з мережі спрацював би пізніше — один код, два порядки. Проміс завжди викликає `.then` асинхронно, тому порядок однаковий і для кешу, і для мережі.
+
+**5. `Promise.all` падає першим, але сусіди добігають**
+
+```js
+Promise.all([wait(20, "ships"), Promise.reject(new Error("arena")), wait(10, "sounds")])
+  .then(() => log("all ok"))
+  .catch((e) => log(`caught ${e.message}`))
+  .finally(() => log("finally"));
+log("started");
+```
+
+Вивід: `started, caught arena, finally, done sounds, done ships`. `Promise.all` відхиляється на першому reject, не чекаючи решти, але решта таймерів не скасовується і добігає. Тому в `loadAll` «сусідів» зупиняємо самі через `AbortController`.
+
+### Галерея збоїв
+
+Жоден збій не валить гру: вона або стартує із заміною, або показує зрозуміле повідомлення й кнопку «Спробувати ще раз».
+
+| Збій | Як відтворити | Що бачить гравець | Повтори |
+|---|---|---|---|
+| **404 спрайта** | `?fault=404` | панель «Деякі файли не завантажились: asteroids — HTTP 404» → «Продовжити без них» → астероїди векторні | немає (4xx) |
+| **200, але HTML замість картинки** | `?fault=html` | `✗ asteroids файл не є картинкою (text/html)` → «Продовжити без них» → векторна заміна | немає |
+| **Таймаут мережі** | `?fault=timeout` | `✗ arena Сервер не відповів вчасно · спроб: 3` → «Не вдалося завантажити гру» → Retry → успіх | 3 спроби, ~7 с |
+| **Abort посеред завантаження** | `?fault=abort` або Esc | усі файли «Скасовано» → «Завантаження скасовано» → Retry | немає |
+| **Битий JSON** | `?fault=badjson` | `✗ arena Битий JSON: Unexpected end of JSON input`, решта «Скасовано» → Retry | немає |
+| **Тимчасовий 503** | `?fault=flaky,slow` | `✓ arena … (після 2 повт.)` — гравець збою майже не помітив | 2 повтори |
+| **Лобі: таймаут** | `?lobby=slow` | «⚠ Сервер не відповів вчасно (таймаут). Повтор через 3 с» | кожні 3 с |
+
+| 404 спрайта | 404 → гра з векторною заміною |
+|---|---|
+| ![404](doc/lab3_fail_404.png) | ![404 гра](doc/lab3_fail_404_game.png) |
+
+| 200, але HTML замість картинки | Таймаут: повтор з backoff (спроба 2/3) |
+|---|---|
+| ![html](doc/lab3_fail_html.png) | ![timeout retry](doc/lab3_fail_timeout_retry.png) |
+
+| Таймаут: 3 спроби вичерпано → Retry | Abort |
+|---|---|
+| ![timeout](doc/lab3_fail_timeout.png) | ![abort](doc/lab3_fail_abort.jfif) |
+
+| Битий JSON | 503 → retry → успіх |
+|---|---|
+| ![bad json](doc/lab3_fail_badjson.jfif) | ![flaky](doc/lab3_retry_flaky.png) |
+
+| Прогрес посеред завантаження (404 + повільний файл) | Лобі: таймаут |
+|---|---|
+| ![loading](doc/lab3_loading.png) | ![lobby timeout](doc/lab3_lobby_timeout.png) |
+
+### Досліди з нотаток
+
+| Дослід | Результат | Пояснення |
+|---|---|---|
+| §1 `resolve(1); resolve(2)` | лише `1` | проміс встановлюється один раз, другий `resolve` ігнорується |
+| §1 `Promise.resolve("ready").then(...)`; `log("after subscribe")` | `after subscribe`, потім `then ready` | `.then` завжди асинхронний, навіть для готового промісу |
+| §2 `setTimeout(1)`, `.then(2).then(3)`, `async { 4; await 0; 5 }`, `6` | `4, 6, 2, 5, 3, 1` | 4 і 6 синхронно; 2 уже в черзі, 5 стає за ним; 3 — лише коли виконався 2; 1 — задача після всіх мікрозадач |
+| §3 забутий `return` у `.then` | `forgot undefined`, `returned 2` | ланцюг чекає на те, що повернули; без `return` далі їде `undefined` |
+| §3 `throw` у `.then` → `.then(b)` → `.catch` → `.then(d)` | `a 1, c boom, d` (без `b`) | помилка їде вниз до `.catch`; після нього ланцюг знову fulfilled |
+| §4 `fetch` на 404 / на неіснуючий хост | `ok false status 404` / reject `TypeError` | 404 — сервер відповів (fulfill); reject — лише коли запиту не було |
+| §5 два `await wait(1000)` vs `Promise.all` | ~2003 мс vs ~1001 мс | послідовні `await` стартують другу роботу лише після першої |
+| §5 `Promise.all([slow, reject])` | одразу `all fast`, через 300 мс `slow still ran` | `all` нічого не скасовує |
+| §6 `abort()` / `AbortSignal.timeout` | `AbortError` / `TimeoutError` | скасування — через сигнал, не через сам проміс |
+| §6 необроблений reject у Node | процес завершується з кодом **1** | у браузері — лише подія `unhandledrejection` і повідомлення в консолі |
+| §7 два `.then` на готовому промісі / пізній `addEventListener` | `early` і `late` / лише `heard 1` | проміс пам'ятає значення, подія — ні |
+
+---
 
 ## Лаба 2: об'єкти, класи, this і композиція
 

@@ -6,8 +6,8 @@ import { TUNING } from "./ship.js";
 // Що відбувається, коли дві сутності зіткнулись.
 // Перевіряємо компоненти й «уміння» (pickup, effects, takeDamage), а не конкретні класи.
 export function resolveCollision(world, a, b) {
-	if (a.pickup && b.effects) return collectPickup(b, a);
-	if (b.pickup && a.effects) return collectPickup(a, b);
+	if (a.pickup && b.effects) return collectPickup(world, b, a);
+	if (b.pickup && a.effects) return collectPickup(world, a, b);
 	if (a.kind === "bullet") return bulletHit(world, a, b);
 	if (b.kind === "bullet") return bulletHit(world, b, a);
 	if (a.kind === "ship" && b.kind === "asteroid") return ram(world, a, b);
@@ -16,9 +16,15 @@ export function resolveCollision(world, a, b) {
 		return bounce(a, b);
 }
 
-function collectPickup(holder, item) {
+function collectPickup(world, holder, item) {
 	addEffect(holder.effects, item.pickup.type, item.pickup.duration);
 	item.alive = false;
+	world.emit("picked", {
+		holderId: holder.id,
+		type: item.pickup.type,
+		x: item.pos.x,
+		y: item.pos.y,
+	});
 }
 
 function bulletHit(world, bullet, target) {

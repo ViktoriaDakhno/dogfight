@@ -24,34 +24,72 @@ function lerpPos(e, alpha) {
 }
 
 export function drawBackground(ctx) {
-	ctx.fillStyle = "#101626";
+	ctx.fillStyle = ARENA.background;
 	ctx.fillRect(0, 0, ARENA.width, ARENA.height);
 
-	ctx.strokeStyle = "#1e2a45"; // сітка, щоб було видно рух
+	ctx.strokeStyle = ARENA.grid; // сітка, щоб було видно рух
 	ctx.lineWidth = 1;
 	ctx.beginPath();
-	for (let x = 0; x <= ARENA.width; x += 100) {
+	for (let x = 0; x <= ARENA.width; x += ARENA.gridStep) {
 		ctx.moveTo(x, 0);
 		ctx.lineTo(x, ARENA.height);
 	}
-	for (let y = 0; y <= ARENA.height; y += 100) {
+	for (let y = 0; y <= ARENA.height; y += ARENA.gridStep) {
 		ctx.moveTo(0, y);
 		ctx.lineTo(ARENA.width, y);
 	}
 	ctx.stroke();
 
-	ctx.strokeStyle = "#4a6fa5";
+	ctx.strokeStyle = ARENA.border;
 	ctx.lineWidth = 3;
 	ctx.strokeRect(0, 0, ARENA.width, ARENA.height);
 }
 
-function drawShip(ctx, ship, alpha) {
+// ---------- векторні заміни (Lab 2), якщо спрайт не завантажився ----------
+function vectorShip(ctx, ship) {
+	ctx.strokeStyle = ship.color;
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.moveTo(20, 0);
+	ctx.lineTo(-14, -12);
+	ctx.lineTo(-8, 0);
+	ctx.lineTo(-14, 12);
+	ctx.closePath();
+	ctx.stroke();
+	if (ship.thrust) {
+		ctx.strokeStyle = "#ffb347";
+		ctx.beginPath();
+		ctx.moveTo(-9, -5);
+		ctx.lineTo(-22 - Math.random() * 10, 0);
+		ctx.lineTo(-9, 5);
+		ctx.stroke();
+	}
+}
+
+function vectorAsteroid(ctx, asteroid) {
+	ctx.strokeStyle = asteroid.homing ? "#ff6b6b" : "#9aa7bd";
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	const n = asteroid.shape.length;
+	for (let i = 0; i < n; i++) {
+		const a = (i / n) * Math.PI * 2;
+		const r = asteroid.radius * asteroid.shape[i];
+		if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+		else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+	}
+	ctx.closePath();
+	ctx.stroke();
+}
+
+// ---------- сутності ----------
+function drawShip(ctx, ship, alpha, sprites) {
 	if (ship.destroyed) return;
 	// блимання під час невразливості після респауну
 	if (ship.invulnerable > 0 && Math.floor(performance.now() / 100) % 2 === 0)
 		return;
 
 	const p = lerpPos(ship, alpha);
+	const angle = lerpAngle(ship.prevAngle, ship.angle, alpha);
 	ctx.save();
 	ctx.translate(p.x, p.y);
 
@@ -65,57 +103,52 @@ function drawShip(ctx, ship, alpha) {
 		ctx.strokeStyle = "#5ec8ff";
 		ctx.lineWidth = 2;
 		ctx.beginPath();
-		ctx.arc(0, 0, ship.radius + 8, 0, Math.PI * 2);
+		ctx.arc(0, 0, ship.radius + 10, 0, Math.PI * 2);
 		ctx.stroke();
 	}
 
-	ctx.rotate(lerpAngle(ship.prevAngle, ship.angle, alpha));
-	ctx.strokeStyle = ship.color;
-	ctx.lineWidth = 2;
-	ctx.beginPath();
-	ctx.moveTo(20, 0);
-	ctx.lineTo(-14, -12);
-	ctx.lineTo(-8, 0);
-	ctx.lineTo(-14, 12);
-	ctx.closePath();
-	ctx.stroke();
-
-	if (ship.thrust) {
-		ctx.strokeStyle = "#ffb347";
-		ctx.beginPath();
-		ctx.moveTo(-9, -5);
-		ctx.lineTo(-22 - Math.random() * 10, 0);
-		ctx.lineTo(-9, 5);
-		ctx.stroke();
+	const frame = ship.thrust ? `${ship.skin}-thrust` : ship.skin;
+	if (!sprites.draw(ctx, "ships", frame, 0, 0, 48, angle)) {
+		ctx.rotate(angle);
+		vectorShip(ctx, ship);
 	}
 	ctx.restore();
 }
 
-function drawBullet(ctx, bullet, alpha) {
+function drawBullet(ctx, bullet, alpha, sprites) {
 	const p = lerpPos(bullet, alpha);
+	const frame = bullet.homing ? "homing" : "normal";
+	if (sprites.draw(ctx, "bullets", frame, p.x, p.y, 14)) return;
 	ctx.fillStyle = bullet.homing ? "#c792ea" : "#ffe08a";
 	ctx.beginPath();
 	ctx.arc(p.x, p.y, bullet.radius, 0, Math.PI * 2);
 	ctx.fill();
 }
 
-function drawAsteroid(ctx, asteroid, alpha) {
+const ROCK_FRAMES = ["a", "b", "c"];
+
+function drawAsteroid(ctx, asteroid, alpha, sprites) {
 	const p = lerpPos(asteroid, alpha);
+	const angle = lerpAngle(asteroid.prevAngle, asteroid.angle, alpha);
+	const frame = ROCK_FRAMES[asteroid.id % ROCK_FRAMES.length];
+	// у кадрі 128 px камінь має радіус ~56 px → масштаб 128/112
+	const size = asteroid.radius * 2 * (128 / 112);
+
 	ctx.save();
 	ctx.translate(p.x, p.y);
-	ctx.rotate(lerpAngle(asteroid.prevAngle, asteroid.angle, alpha));
-	ctx.strokeStyle = asteroid.homing ? "#ff6b6b" : "#9aa7bd";
-	ctx.lineWidth = 2;
-	ctx.beginPath();
-	const n = asteroid.shape.length;
-	for (let i = 0; i < n; i++) {
-		const a = (i / n) * Math.PI * 2;
-		const r = asteroid.radius * asteroid.shape[i];
-		if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-		else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+	if (!sprites.draw(ctx, "asteroids", frame, 0, 0, size, angle)) {
+		ctx.rotate(angle);
+		vectorAsteroid(ctx, asteroid);
+	} else if (asteroid.homing) {
+		// «мисливець»: червоне кільце поверх спрайта
+		ctx.strokeStyle = "#ff6b6b";
+		ctx.lineWidth = 2;
+		ctx.setLineDash([6, 6]);
+		ctx.beginPath();
+		ctx.arc(0, 0, asteroid.radius + 6, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.setLineDash([]);
 	}
-	ctx.closePath();
-	ctx.stroke();
 	ctx.restore();
 }
 
@@ -154,49 +187,6 @@ const DRAWERS = {
 	explosion: drawExplosion,
 };
 
-export function drawEntity(ctx, entity, alpha) {
-	DRAWERS[entity.kind]?.(ctx, entity, alpha);
-}
-
-export function drawHud(ctx, stats, { player, world }, view) {
-	ctx.fillStyle = "#9fe870";
-	ctx.font = "14px monospace";
-	ctx.textAlign = "left";
-	ctx.textBaseline = "alphabetic";
-	ctx.fillText(`steps/s: ${stats.stepsPerSec.toFixed(1)}`, 12, 22);
-	ctx.fillText(`frames/s: ${stats.framesPerSec.toFixed(1)}`, 12, 40);
-	ctx.fillText(`frame: ${stats.frameMs.toFixed(1)} ms`, 12, 58);
-
-	ctx.fillStyle = "#e8f1ff";
-	ctx.fillText(`score: ${world.scores.get(player.id) ?? 0}`, 12, 84);
-	ctx.fillText(`hp: ${player.hp}   deaths: ${player.deaths}`, 12, 102);
-	ctx.fillText(`entities: ${world.size}`, 12, 120);
-
-	const effects = [...player.effects]
-		.map(([type, left]) => `${type} ${left.toFixed(1)}s`)
-		.join("  ");
-	if (effects) {
-		ctx.fillStyle = "#c792ea";
-		ctx.fillText(effects, 12, 138);
-	}
-
-	if (player.destroyed) {
-		ctx.fillStyle = "#ff6b6b";
-		ctx.font = "bold 24px monospace";
-		ctx.textAlign = "center";
-		ctx.fillText(
-			`Респаун через ${Math.max(0, player.respawnIn).toFixed(1)} с`,
-			view.width / 2,
-			view.height / 2,
-		);
-	}
-
-	ctx.fillStyle = "#6b7a99";
-	ctx.font = "12px monospace";
-	ctx.textAlign = "left";
-	ctx.fillText(
-		"←/→ A/D поворот · ↑/W тяга · Space стрільба · клік — один постріл · pickup: S щит, R швидкострільність, H самонавідні кулі",
-		12,
-		view.height - 12,
-	);
+export function drawEntity(ctx, entity, alpha, sprites) {
+	DRAWERS[entity.kind]?.(ctx, entity, alpha, sprites);
 }

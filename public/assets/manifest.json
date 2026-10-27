@@ -1,0 +1,37 @@
+{
+	"version": 1,
+	"baseUrl": "/assets/",
+	"items": [
+		{
+			"id": "arena",
+			"type": "json",
+			"url": "arena.json",
+			"critical": true
+		},
+		{
+			"id": "ships",
+			"type": "image",
+			"url": "sprites/ships.png",
+			"frameSize": [64, 64],
+			"frames": ["player", "player-thrust", "drone", "drone-thrust"]
+		},
+		{
+			"id": "asteroids",
+			"type": "image",
+			"url": "sprites/asteroids.png",
+			"frameSize": [128, 128],
+			"frames": ["a", "b", "c"]
+		},
+		{
+			"id": "bullets",
+			"type": "image",
+			"url": "sprites/bullets.png",
+			"frameSize": [16, 16],
+			"frames": ["normal", "homing"]
+		},
+		{ "id": "shoot", "type": "sound", "url": "sounds/shoot.wav" },
+		{ "id": "hit", "type": "sound", "url": "sounds/hit.wav" },
+		{ "id": "explosion", "type": "sound", "url": "sounds/explosion.wav" },
+		{ "id": "pickup", "type": "sound", "url": "sounds/pickup.wav" }
+	]
+}

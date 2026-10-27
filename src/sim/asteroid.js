@@ -34,9 +34,27 @@ export class Asteroid extends Entity {
 	takeDamage(amount, world, sourceId) {
 		if (!this.alive) return false;
 		this.hp -= amount;
-		if (this.hp > 0) return true;
+		if (this.hp > 0) {
+			world.emit("hit", {
+				targetId: this.id,
+				targetKind: "asteroid",
+				sourceId,
+				damage: amount,
+				x: this.pos.x,
+				y: this.pos.y,
+			});
+			return true;
+		}
 
 		this.alive = false;
+		world.emit("exploded", {
+			id: this.id,
+			kind: "asteroid",
+			size: this.size,
+			sourceId,
+			x: this.pos.x,
+			y: this.pos.y,
+		});
 		world.spawn(
 			new Explosion({
 				pos: this.pos,
@@ -45,7 +63,7 @@ export class Asteroid extends Entity {
 				count: 8 + this.size * 6,
 			}),
 		);
-		world.addScore(sourceId, this.points);
+		world.addScore(sourceId, this.points, this.pos);
 
 		// великий астероїд розколюється на два менші
 		if (this.size > 1) {
